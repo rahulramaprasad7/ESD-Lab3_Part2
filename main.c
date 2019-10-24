@@ -17,16 +17,16 @@ void main(void)
     P1->DIR |= BIT0;
     P1->OUT |= BIT0;
 
-    TIMER_A0->CCTL[0] |= TIMER_A_CCTLN_OUTMOD_3 | TIMER_A_CCTLN_CCIE; // TACCR0 interrupt enabled
-    TIMER_A0->CCTL[1] |= TIMER_A_CCTLN_OUTMOD_3 | TIMER_A_CCTLN_CCIE; // TACCR1 interrupt enabled
+    TIMER_A0->CCTL[0] |= TIMER_A_CCTLN_OUTMOD_7 | TIMER_A_CCTLN_CCIE; // TACCR0 interrupt enabled
+    TIMER_A0->CCTL[1] |= TIMER_A_CCTLN_OUTMOD_7 | TIMER_A_CCTLN_CCIE; // TACCR1 interrupt enabled
 
-    TIMER_A0->CCR[0] = 18750;
-    TIMER_A0->CCR[1] = 18750;
+    TIMER_A0->CCR[1] = 32500;
+    TIMER_A0->CCR[0] = 65000;
 
-    TIMER_A0->CTL = TIMER_A_CTL_SSEL__SMCLK | TIMER_A_CTL_MC__UP; // SMCLK, up mode
+    TIMER_A0->CTL = TIMER_A_CTL_SSEL__SMCLK | TIMER_A_CTL_MC__CONTINUOUS; // SMCLK, up mode
 
-    TIMER_A0->CTL |= TIMER_A_CTL_ID_2;       //Pre-scaler divide by 4
-    TIMER_A0->EX0 |= TIMER_A_EX0_TAIDEX_7;   //Prescaler divide by 8
+    //TIMER_A0->CTL |= TIMER_A_CTL_ID_2;       //Pre-scaler divide by 4
+    //TIMER_A0->EX0 |= TIMER_A_EX0_TAIDEX_7;   //Prescaler divide by 8
 
     P2->DIR |= 0xFF; P2->OUT = 0;
     P3->DIR |= 0xFF; P3->OUT = 0;
@@ -56,10 +56,8 @@ void PORT1_IRQHandler(void)
 
     if(P1->IFG & BIT1)
     {
-        //printf("PWM increase by 10% ");
-        TIMER_A0->CCR[0] += (18750 + 1875);
-        //printf("%d",TIMER_A0->CCR[0]);
-        //printf("\n");
+        if (TIMER_A0->CCR[1] > 3250)
+            TIMER_A0->CCR[1] -= 3250;
         // Delay for P1.1 switch debounce
         for(i = 0; i < 10000; i++)
             P1->IFG &= ~BIT1;
@@ -69,10 +67,8 @@ void PORT1_IRQHandler(void)
 
     else if(P1->IFG & BIT4)
     {
-        //printf("PWM decrease by 10% ");
-        TIMER_A0->CCR[1] += (18750);
-        //printf("%d",TIMER_A0->CCR[1]);
-        //printf("\n");
+        if (TIMER_A0->CCR[1] < 62250)
+            TIMER_A0->CCR[1] += 3250;
         // Delay for P1.4 switch debounce
         for(i = 0; i < 10000; i++)
             P1->IFG &= ~BIT4;
