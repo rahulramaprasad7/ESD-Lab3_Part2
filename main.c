@@ -8,6 +8,11 @@ uint16_t x;
 int32_t adcRefTempCal_1_2v_30;
 int32_t adcRefTempCal_1_2v_85;
 
+uint16_t pwmLevel = 4;
+
+
+#define PWMCOUNT 6553
+
 volatile long degree;
 volatile float IntDegF;
 volatile float IntDegC;
@@ -43,18 +48,17 @@ void push_init()
 
 void uart_init()
 {
-    EUSCI_A0->CTLW0 |= EUSCI_A_CTLW0_SWRST;
-    EUSCI_A0->CTLW0 |= EUSCI_A_CTLW0_SWRST | EUSCI_A_CTLW0_SSEL__SMCLK;
 
-    EUSCI_A0->BRW = 9;
-    EUSCI_A0->MCTLW |= (12 << EUSCI_A_MCTLW_BRF_OFS) | (0x44 << EUSCI_A_MCTLW_BRS_OFS) | EUSCI_A_MCTLW_OS16;
+        P1->SEL0 |= BIT2 | BIT3;
 
-    EUSCI_A0->CTLW0 |= ~EUSCI_A_CTLW0_SWRST;
+        EUSCI_A0->CTLW0 |= EUSCI_A_CTLW0_SWRST;
+        EUSCI_A0->CTLW0 = EUSCI_A_CTLW0_SWRST | EUSCI_B_CTLW0_SSEL__SMCLK;
+        EUSCI_A0->BRW = 6;
+        EUSCI_A0->MCTLW = (0xAA << EUSCI_A_MCTLW_BRS_OFS);
 
-    P1->SEL0 |= BIT2 | BIT3;
-
-    EUSCI_A0->IE |=  EUSCI_A_IE_RXIE;
-    EUSCI_A0->IFG |= ~EUSCI_A_IFG_RXIFG;
+        EUSCI_A0->CTLW0 &= ~EUSCI_A_CTLW0_SWRST;
+        EUSCI_A0->IFG &= ~EUSCI_A_IFG_RXIFG;
+        EUSCI_A0->IE |= EUSCI_A_IE_RXIE;
 }
 
 void timer_init()
@@ -63,12 +67,13 @@ void timer_init()
     TIMER_A0->CCTL[0] |= TIMER_A_CCTLN_OUTMOD_6 | TIMER_A_CCTLN_CCIE; // TACCR1 interrupt enabled
 
     TIMER_A0->CCR[0] = 65531;
-    TIMER_A0->CCR[1] = 26212;
+    TIMER_A0->CCR[1] = 4 * PWMCOUNT;
 
-    TIMER_A0->CTL = TIMER_A_CTL_SSEL__SMCLK | TIMER_A_CTL_MC__CONTINUOUS; // SMCLK, up mode
+    TIMER_A0->CTL = TIMER_A_CTL_SSEL__SMCLK | TIMER_A_CTL_MC__CONTINUOUS; // SMCLK, continuous mode
 
 }
 void main(void)
+
 {
     WDT_A->CTL = WDT_A_CTL_PW | WDT_A_CTL_HOLD;		// stop watchdog timer
 
@@ -77,6 +82,7 @@ void main(void)
     temp_init();
     timer_init();
     push_init();
+    uart_init();
 
     P1->DIR |= BIT0;
     P1->OUT |= BIT0;
@@ -99,28 +105,42 @@ void main(void)
 
     while(1)
     {
-//        ADC14->CTL0 |= ADC14_CTL0_SC;
-//        __sleep();
-//        __no_operation();                   // Only for debugger
-//        IntDegC = (((float) degree - adcRefTempCal_1_2v_30) * (85 - 30)) / (adcRefTempCal_1_2v_85 - adcRefTempCal_1_2v_30) + 30.0f;
-//        IntDegF = ((9 * IntDegC) / 5) + 32;
-//        printf("%f ", IntDegF);
-//        __no_operation();                   // Only for debugger
+        ADC14->CTL0 |= ADC14_CTL0_SC;
+        IntDegC = (((float) degree - adcRefTempCal_1_2v_30) * (85 - 30)) / (adcRefTempCal_1_2v_85 - adcRefTempCal_1_2v_30) + 30.0f;
+        IntDegF = ((9 * IntDegC) / 5) + 32;
+        //printf("%f ", IntDegC);
+
+//        if (x == 'p')
+//            printf("%d", pwmLevel);
+//        printf("\n");
+
         if (check == 1)
         {
-            if (TIMER_A0->CCR[1] > 0)
-                TIMER_A0->CCR[1] -= 6553;
-            check = 0;
-            printf("%u ", TIMER_A0->CCR[1]);
-                printf("\n");
+            if(pwmLevel != 0)
+            {
+                if (TIMER_A0->CCR[1] > 0)
+                {
+                    pwmLevel--;
+                    TIMER_A0->CCR[1] = pwmLevel * PWMCOUNT;
+                }
+                check = 0;
+                printf("Duty cycle is %u% ", (pwmLevel * 10));
+                    printf("\n");
+            }
         }
         if (check == 2)
         {
-            if (TIMER_A0->CCR[1] <65530)
-                TIMER_A0->CCR[1] += 6553;
-            check = 0;
-            printf("%u ", TIMER_A0->CCR[1]);
-                printf("\n");
+            if(pwmLevel != 10)
+            {
+                if (TIMER_A0->CCR[1] <65530)
+                {
+                    pwmLevel++;
+                    TIMER_A0->CCR[1] = pwmLevel * PWMCOUNT;
+                }
+                check = 0;
+                printf("Duty cycle is %u% ", (pwmLevel * 10));
+                    printf("\n");
+            }
         }
     }
 
@@ -164,22 +184,16 @@ void TA0_N_IRQHandler(void)
 
 void ADC14_IRQHandler(void)
 {
-//    while ((ADC14->IFGR0 & ADC14_IFGR0_IFG0))
-//    {
-//        degree = ADC14->MEM[0];
-//        //printf("%u %u",ADC14->MEM[0], ADC14->MEM[1]);
-//        //printf("\n");
-//    }
+    while ((ADC14->IFGR0 & ADC14_IFGR0_IFG0))
+        degree = ADC14->MEM[0];
 }
 
 void EUSCIA0_IRQHandler(void)
 {
-//    printf("Entered UART");
-//    if(EUSCI_A_IFG_RXIFG & EUSCI_A0->IFG )
-//    {
-//        while(!(EUSCI_A0->IFG & EUSCI_A_IFG_TXIFG));
-//        x = EUSCI_A0->RXBUF;
-//    }
-//    printf("%d",x);
-//    EUSCI_A0->TXBUF = x;
+    if(EUSCI_A_IFG_RXIFG & EUSCI_A0->IFG )
+    {
+        while(!(EUSCI_A0->IFG & EUSCI_A_IFG_TXIFG));
+        x = EUSCI_A0->RXBUF;
+    }
+    EUSCI_A0->TXBUF = x;
 }
