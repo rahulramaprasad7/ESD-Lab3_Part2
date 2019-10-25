@@ -1,6 +1,7 @@
 #include "msp.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 
 /* Referred to the temperature sensor example for calibrating the sensor */
 
@@ -11,11 +12,14 @@ char buffer[10];  //Buffer to output serial message
 uint16_t userPWM; //Using to store user input for duty cycle
 
 
+char startMessage[80] = "Enter p to check duty cycle, t for temperature ";
 char pwmMessage[20] = "PWM Duty Cycle = ";
+char unitMessage[20] = "Changing the Unit ";
 char pwmUserMessage[20] = "Wrong Input Value ";
 char tempMessage[20] = "Temperature is ";
 char newLine [2] = {'\n','\r'};
 char celsius [2];
+char fahreneit[2];
 char percent [2];
 
 uint16_t pwmLevel = 4;
@@ -29,41 +33,19 @@ volatile float IntDegC;
 
 void temp_init()
 {
-//    while(REF_A->CTL0 & REF_A_CTL0_GENBUSY);
-//    REF_A->CTL0 |= REF_A_CTL0_VSEL_0 | REF_A_CTL0_ON;                    //Enable REFON bit
-//
-//    REF_A->CTL0 &= ~REF_A_CTL0_TCOFF;
-//
-//    ADC14->CTL0 = ADC14_CTL0_SHT0_6 | ADC14_CTL0_SHP | ADC14_CTL0_ON;
-//    ADC14->CTL1 |= ADC14_CTL1_TCMAP;  //Enable Temperature sensor and use unsigned adc
-//
-//    ADC14->MCTL[0] |= ADC14_MCTLN_VRSEL_1 | ADC14_MCTLN_INCH_22;            //Set input
-//
-//    ADC14->IER0 |= 0x0001;
-//    while(!(REF_A->CTL0 & REF_A_CTL0_GENRDY));
-//    ADC14->CTL0 |= ADC14_CTL0_ENC;
+    while(REF_A->CTL0 & REF_A_CTL0_GENBUSY);
+    REF_A->CTL0 |= REF_A_CTL0_VSEL_0 | REF_A_CTL0_ON;                    //Enable REFON bit
 
-        // Initialize the shared reference module
-        // By default, REFMSTR=1 => REFCTL is used to configure the internal reference
-        while(REF_A->CTL0 & REF_A_CTL0_GENBUSY);// If ref generator busy, WAIT
-        REF_A->CTL0 |= REF_A_CTL0_VSEL_0 |      // Enable internal 1.2V reference
-                REF_A_CTL0_ON;                  // Turn reference on
+    REF_A->CTL0 &= ~REF_A_CTL0_TCOFF;
 
-        REF_A->CTL0 &= ~REF_A_CTL0_TCOFF;       // Enable temperature sensor
+    ADC14->CTL0 = ADC14_CTL0_SHT0_6 | ADC14_CTL0_SHP | ADC14_CTL0_ON;
+    ADC14->CTL1 |= ADC14_CTL1_TCMAP;  //Enable Temperature sensor and use unsigned adc
 
-        // Configure ADC - Pulse sample mode; ADC14_CTL0_SC trigger
-        ADC14->CTL0 |= ADC14_CTL0_SHT0_6 |      // ADC ON,temperature sample period>5us
-                ADC14_CTL0_ON |
-                ADC14_CTL0_SHP;
-        ADC14->CTL1 |= ADC14_CTL1_TCMAP;        // Enable internal temperature sensor
-        ADC14->MCTL[0] = ADC14_MCTLN_VRSEL_1 |  // ADC input ch A22 => temp sense
-                ADC14_MCTLN_INCH_22;
-        ADC14->IER0 = 0x0001;                   // ADC_IFG upon conv result-ADCMEM0
+    ADC14->MCTL[0] |= ADC14_MCTLN_VRSEL_1 | ADC14_MCTLN_INCH_22;            //Set input
 
-        // Wait for reference generator to settle
-        while(!(REF_A->CTL0 & REF_A_CTL0_GENRDY));
-
-        ADC14->CTL0 |= ADC14_CTL0_ENC;
+    ADC14->IER0 |= 0x0001;
+    while(!(REF_A->CTL0 & REF_A_CTL0_GENRDY));
+    ADC14->CTL0 |= ADC14_CTL0_ENC;
 }
 
 void push_init()
@@ -122,13 +104,15 @@ void putstr (char *buff)
 }
 void main(void)
 {
+    bool unitFlag = false;
     int32_t adcRefTempCal_1_2v_30;
     int32_t adcRefTempCal_1_2v_85;
 
-    WDT_A->CTL = WDT_A_CTL_PW | WDT_A_CTL_HOLD;		// stop watchdog timer
+    WDT_A->CTL = WDT_A_CTL_PW | WDT_A_CTL_HOLD;     // stop watchdog timer
 
     snprintf(percent, 2, "%c", '%');      //Converting the % character to transmit serially
     snprintf(celsius, 2, "%c", 'C');      //Converting the C character to transmit serially
+    snprintf(fahreneit, 2, "%c", 'F');   //Converting the F character to transmit serially
 
     adcRefTempCal_1_2v_30 = TLV->ADC14_REF1P2V_TS30C;    //Accessing calibrated value for 30 degree Celsius
     adcRefTempCal_1_2v_85 = TLV->ADC14_REF1P2V_TS85C;    //Accessing calibrated value for 85 degree Celsius
@@ -146,17 +130,30 @@ void main(void)
     NVIC->ISER[1] |= 1 << ((PORT1_IRQn) & 31);
     NVIC->ISER[0] |= (1 << (EUSCIA0_IRQn & 31)) | (1 << (TA0_0_IRQn & 31)) | (1 << (TA0_N_IRQn & 31)) | (1 << ((ADC14_IRQn) & 31)) ;
 
+    putstr(startMessage);
+    putstr(newLine);
     while(1)
     {
         if ( x == 't')
         {
             ADC14->CTL0 |= ADC14_CTL0_SC;  //Starting the ADC conversion
-            IntDegC = (((float) degree - adcRefTempCal_1_2v_30) * (85 - 30)) / (adcRefTempCal_1_2v_85 - adcRefTempCal_1_2v_30) + 30.0f; //Calibrating the values
-            IntDegF = ((9 * IntDegC) / 5) + 32; //Conversion from Celsius scale to Fahrenheit scale
-            snprintf(buffer,10,"%f", IntDegC);
+            IntDegC = (((float) degree - adcRefTempCal_1_2v_30) * (85 - 30)) / (adcRefTempCal_1_2v_85 - adcRefTempCal_1_2v_30) - 12.5; //Calibrating the values
+            IntDegF = ((9 * IntDegC) / 5) + 32; //Conversion from Celsius scale to Fahreneit scale
+
             putstr(tempMessage);
-            putstr(buffer);
-            putstr(celsius);
+
+            if (!(unitFlag))
+            {
+                snprintf(buffer,10,"%f", IntDegC);
+                putstr(buffer);
+                putstr(celsius);
+            }
+            if (unitFlag)
+            {
+                snprintf(buffer,10,"%f", IntDegF);
+                putstr(buffer);
+                putstr(fahreneit);
+            }
             putstr(newLine);
             memset(buffer, '\0', 10*sizeof(char)); //Reset the Buffer
             x = NULL; //Reset the character used to echo
@@ -186,6 +183,14 @@ void main(void)
                 putstr(pwmUserMessage);
                 putstr(newLine);
             }
+        }
+        if ( x == 'u')
+        {
+            putstr(unitMessage);
+            putstr(newLine);
+            unitFlag ^= true;
+            memset(buffer, '\0', 10*sizeof(char)); //Reset Buffer
+            x = NULL; //Reset character used to echo
         }
 
         if (check == 1) //If Pushbutton 1 is pressed
