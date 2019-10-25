@@ -12,7 +12,13 @@ char buffer[10];  //Buffer to output serial message
 uint16_t userPWM; //Using to store user input for duty cycle
 
 
-char startMessage[80] = "Enter p to check duty cycle, t for temperature ";
+char startMessage[80] = "Enter p to check duty cycle";
+char startMessage1[80] ="t for temperature ";
+char startMessage2[80] ="u for changing units ";
+char startMessage3[80] ="g for decreasing duty cycle of green led ";
+char startMessage4[80] ="h for inrceasing duty cycle of green led ";
+char startMessage5[80] ="b for decreasing duty cycle of blue led ";
+char startMessage6[80] ="c for increasing duty cycle of blue led ";
 char pwmMessage[20] = "PWM Duty Cycle = ";
 char unitMessage[20] = "Changing the Unit ";
 char pwmUserMessage[20] = "Wrong Input Value ";
@@ -23,6 +29,8 @@ char fahreneit[2];
 char percent [2];
 
 uint16_t pwmLevel = 4;
+uint16_t pwmLevelGreen = 4;
+uint16_t pwmLevelBlue = 4;
 
 
 #define PWMCOUNT 6553  //10% of 65530
@@ -83,6 +91,7 @@ void uart_init()
 
 void timer_init()
 {
+    /* RED */
     TIMER_A0->CCTL[1] |= TIMER_A_CCTLN_OUTMOD_6 | TIMER_A_CCTLN_CCIE; // TACCR0 interrupt enabled and output mode 6
     TIMER_A0->CCTL[0] |= TIMER_A_CCTLN_OUTMOD_6 | TIMER_A_CCTLN_CCIE; // TACCR1 interrupt enabled and output mode 6
 
@@ -90,6 +99,24 @@ void timer_init()
     TIMER_A0->CCR[1] = 4 * PWMCOUNT;  //Initialising 40 % duty cycle
 
     TIMER_A0->CTL = TIMER_A_CTL_SSEL__SMCLK | TIMER_A_CTL_MC__CONTINUOUS; // SMCLK, continuous mode
+
+    /* GREEN */
+    TIMER_A1->CCTL[1] |= TIMER_A_CCTLN_OUTMOD_6 | TIMER_A_CCTLN_CCIE; // TACCR0 interrupt enabled and output mode 6
+    TIMER_A1->CCTL[0] |= TIMER_A_CCTLN_OUTMOD_6 | TIMER_A_CCTLN_CCIE; // TACCR1 interrupt enabled and output mode 6
+
+    TIMER_A1->CCR[0] = 65531;  //Initialising Timer_A Compare 0 register
+    TIMER_A1->CCR[1] = 4 * PWMCOUNT;  //Initialising 40 % duty cycle
+
+    TIMER_A1->CTL = TIMER_A_CTL_SSEL__SMCLK | TIMER_A_CTL_MC__CONTINUOUS; // SMCLK, continuous mode
+
+    /* BLUE */
+    TIMER_A2->CCTL[1] |= TIMER_A_CCTLN_OUTMOD_6 | TIMER_A_CCTLN_CCIE; // TACCR0 interrupt enabled and output mode 6
+    TIMER_A2->CCTL[0] |= TIMER_A_CCTLN_OUTMOD_6 | TIMER_A_CCTLN_CCIE; // TACCR1 interrupt enabled and output mode 6
+
+    TIMER_A2->CCR[0] = 65531;  //Initialising Timer_A Compare 0 register
+    TIMER_A2->CCR[1] = 4 * PWMCOUNT;  //Initialising 40 % duty cycle
+
+    TIMER_A2->CTL = TIMER_A_CTL_SSEL__SMCLK | TIMER_A_CTL_MC__CONTINUOUS; // SMCLK, continuous mode
 
 }
 void putstr (char *buff)
@@ -102,6 +129,22 @@ void putstr (char *buff)
         i++;
     }
 }
+
+void led_init()
+{
+    P1->DIR |= BIT0;  //Enabling output of LED 1
+    P1->OUT |= BIT0;  //Setting the output LED1
+
+    P2->DIR |= BIT0;  //Enabling output RGB Red
+    P2->OUT |= BIT0;  //Setting the output RGB Red
+
+    P2->DIR |= BIT1;  //Enabling output RGB Green
+    P2->OUT |= BIT1;  //Setting the output RGB Green
+
+    P2->DIR |= BIT2;  //Enabling output RGB Blue
+    P2->OUT |= BIT2;  //Setting the output RGB Blue
+}
+
 void main(void)
 {
     bool unitFlag = false;
@@ -122,16 +165,28 @@ void main(void)
     push_init();  //Initialising push buttons
     uart_init();  //Initialising UART
 
-    P1->DIR |= BIT0;  //Enabling output
-    P1->OUT |= BIT0;  //Setting the output
+    led_init();
 
     __enable_irq();   //Enable global interrupts
 
     NVIC->ISER[1] |= 1 << ((PORT1_IRQn) & 31);
-    NVIC->ISER[0] |= (1 << (EUSCIA0_IRQn & 31)) | (1 << (TA0_0_IRQn & 31)) | (1 << (TA0_N_IRQn & 31)) | (1 << ((ADC14_IRQn) & 31)) ;
+    NVIC->ISER[0] |= (1 << (EUSCIA0_IRQn & 31)) | (1 << (TA0_0_IRQn & 31)) | (1 << (TA1_0_IRQn & 31)) | (1 << (TA2_0_IRQn & 31)) | (1 << (TA0_N_IRQn & 31)) | (1 << (TA1_N_IRQn & 31)) | (1 << (TA2_N_IRQn & 31)) | (1 << ((ADC14_IRQn) & 31)) ;
 
     putstr(startMessage);
     putstr(newLine);
+    putstr(startMessage1);
+    putstr(newLine);
+    putstr(startMessage2);
+    putstr(newLine);
+    putstr(startMessage3);
+    putstr(newLine);
+    putstr(startMessage4);
+    putstr(newLine);
+    putstr(startMessage5);
+    putstr(newLine);
+    putstr(startMessage6);
+    putstr(newLine);
+
     while(1)
     {
         if ( x == 't')
@@ -170,20 +225,20 @@ void main(void)
             x = NULL; //Reset character used to echo
         }
 
-        if(x == 'c')
-        {
-            while((EUSCI_A0->IFG & EUSCI_A_IFG_TXIFG));
-                userPWM= EUSCI_A0->RXBUF;
-            if(userPWM >=0 && userPWM <= 10)
-            {
-                pwmLevel = userPWM;
-            }
-            else
-            {
-                putstr(pwmUserMessage);
-                putstr(newLine);
-            }
-        }
+//        if(x == 'c')
+//        {
+//            while((EUSCI_A0->IFG & EUSCI_A_IFG_TXIFG));
+//                userPWM= EUSCI_A0->RXBUF;
+//            if(userPWM >=0 && userPWM <= 10)
+//            {
+//                pwmLevel = userPWM;
+//            }
+//            else
+//            {
+//                putstr(pwmUserMessage);
+//                putstr(newLine);
+//            }
+//        }
         if ( x == 'u')
         {
             putstr(unitMessage);
@@ -191,6 +246,58 @@ void main(void)
             unitFlag ^= true;
             memset(buffer, '\0', 10*sizeof(char)); //Reset Buffer
             x = NULL; //Reset character used to echo
+        }
+
+        if (x == 'g')
+        {
+            if(pwmLevelGreen != 10) //Check if pwmLevel is 10
+            {
+                if (TIMER_A1->CCR[1] <65530) //Check if TACCR1 is 65530
+                {
+                    pwmLevelGreen++; //Increase duty cycle
+                    TIMER_A1->CCR[1] = pwmLevelGreen * PWMCOUNT; //Increase duty cycle by 10 % by increasing count
+                }
+            }
+            x = NULL;
+        }
+
+        if (x == 'h')
+        {
+            if(pwmLevelGreen != 0) //Check if pwmLevel is 10
+            {
+                if (TIMER_A1->CCR[1] > 0) //Check if TACCR1 is 65530
+                {
+                    pwmLevelGreen--; //Increase duty cycle
+                    TIMER_A1->CCR[1] = pwmLevelGreen * PWMCOUNT; //Increase duty cycle by 10 % by increasing count
+                }
+            }
+            x = NULL;
+        }
+
+        if (x == 'b')
+        {
+            if(pwmLevelBlue != 10) //Check if pwmLevel is 10
+            {
+                if (TIMER_A2->CCR[1] <65530) //Check if TACCR1 is 65530
+                {
+                    pwmLevelBlue++; //Increase duty cycle
+                    TIMER_A2->CCR[1] = pwmLevelBlue * PWMCOUNT; //Increase duty cycle by 10 % by increasing count
+                }
+            }
+            x = NULL;
+        }
+
+        if (x == 'c')
+        {
+            if(pwmLevelBlue != 0) //Check if pwmLevel is 10
+            {
+                if (TIMER_A2->CCR[1] > 0) //Check if TACCR1 is 65530
+                {
+                    pwmLevelBlue--; //Increase duty cycle
+                    TIMER_A2->CCR[1] = pwmLevelBlue * PWMCOUNT; //Increase duty cycle by 10 % by increasing count
+                }
+            }
+            x = NULL;
         }
 
         if (check == 1) //If Pushbutton 1 is pressed
@@ -242,17 +349,45 @@ void PORT1_IRQHandler(void)
     }
 
 }
-
+/* RED */
 void TA0_0_IRQHandler(void)
 {
     TIMER_A0->CCTL[0] &= ~TIMER_A_CCTLN_CCIFG;
     P1->OUT |= BIT0;   //Set the output after TACCR0 is reached
+    P2->OUT |= BIT0;
 }
 
 void TA0_N_IRQHandler(void)
 {
     TIMER_A0->CCTL[1] &= ~TIMER_A_CCTLN_CCIFG;
     P1->OUT &= ~BIT0;  //Reset the output after TACCR1 is reached
+    P2->OUT &= ~BIT0;
+}
+
+/* GREEN */
+void TA1_0_IRQHandler(void)
+{
+    TIMER_A1->CCTL[0] &= ~TIMER_A_CCTLN_CCIFG;
+    P2->OUT |= BIT1;   //Set the output after TACCR0 is reached
+}
+
+void TA1_N_IRQHandler(void)
+{
+    TIMER_A1->CCTL[1] &= ~TIMER_A_CCTLN_CCIFG;
+    P2->OUT &= ~BIT1;  //Reset the output after TACCR1 is reached
+}
+
+/* BLUE */
+void TA2_0_IRQHandler(void)
+{
+    TIMER_A2->CCTL[0] &= ~TIMER_A_CCTLN_CCIFG;
+    P2->OUT |= BIT2;   //Set the output after TACCR0 is reached
+}
+
+void TA2_N_IRQHandler(void)
+{
+    TIMER_A2->CCTL[1] &= ~TIMER_A_CCTLN_CCIFG;
+    P2->OUT &= ~BIT2;  //Reset the output after TACCR1 is reached
 }
 
 void ADC14_IRQHandler(void)
